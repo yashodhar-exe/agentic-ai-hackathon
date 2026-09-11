@@ -170,7 +170,17 @@ async def auth_middleware(request: Request, call_next):
     except jwt.ExpiredSignatureError:
         return JSONResponse(status_code=401, content={"detail": "Session expired. Please log in again."})
     except jwt.InvalidTokenError:
-        return JSONResponse(status_code=401, content={"detail": "Invalid token."})
+        # Fallback to Supabase JWT validation if it doesn't match local signature
+        supabase_secret = os.environ.get("SUPABASE_JWT_SECRET")
+        if supabase_secret:
+            try:
+                jwt.decode(token, supabase_secret, algorithms=["HS256"], audience="authenticated")
+            except jwt.ExpiredSignatureError:
+                return JSONResponse(status_code=401, content={"detail": "Supabase session expired. Please log in again."})
+            except jwt.InvalidTokenError as e:
+                return JSONResponse(status_code=401, content={"detail": f"Invalid token signature: {str(e)}"})
+        else:
+            return JSONResponse(status_code=401, content={"detail": "Invalid token signature."})
         
     return await call_next(request)
 
